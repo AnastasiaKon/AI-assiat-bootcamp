@@ -48,8 +48,9 @@ def search_vacancies(query: str, limit: int = 5):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    safe_query = re.sub(r"[^\w\s]", " ", query).strip()
-    if not safe_query:
+    search_query = extract_search_term(query)
+
+    if not search_query:
         conn.close()
         return []
 
@@ -57,8 +58,7 @@ def search_vacancies(query: str, limit: int = 5):
     SELECT v.*
     FROM vacancies_fts f
     JOIN vacancies v ON v.id = f.rowid
-    WHERE vacancies_fts MATCH "{safe_query}"
-      AND v.is_active = 1
+    WHERE vacancies_fts MATCH "{search_query}*"
     LIMIT {int(limit)}
     """
 
@@ -66,6 +66,7 @@ def search_vacancies(query: str, limit: int = 5):
     rows = cur.fetchall()
     conn.close()
     return rows
+
 
 
 def build_context(vacancies):
