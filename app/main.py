@@ -18,10 +18,11 @@ async def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-pro:generateContent"
-    )
+url = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-1.5-flash:generateContent"
+)
+
 
     headers = {"Content-Type": "application/json"}
     params = {"key": api_key}
