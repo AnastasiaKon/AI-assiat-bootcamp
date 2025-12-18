@@ -4,10 +4,10 @@ import os
 import sqlite3
 from pathlib import Path
 import re
-import asyncio
+import threading
 import httpx
 
-from google import genai
+from google import genai  # google-genai SDK
 
 from telegram import Update
 from telegram.ext import (
@@ -23,23 +23,24 @@ from telegram.ext import (
 
 DB_PATH = Path(__file__).parent / "data" / "vacancies.db"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-BACKEND_URL = "https://ai-assiat-bootcamp.onrender.com/ask"
 
-# ======================
-# FASTAPI APP
-# ======================
+# ВАЖНО: бот дергает твой же бэкенд
+BACKEND_URL = "https://ai-assiat-bootcamp.onrender.com/ask"
 
 app = FastAPI()
 
+
 class AskRequest(BaseModel):
     text: str
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 # ======================
-# RAG: SEARCH
+# RAG: SEARCH (SQLite FTS5)
 # ======================
 
 def search_vacancies(query: str, limit: int = 5):
@@ -47,8 +48,11 @@ def search_vacancies(query: str, limit: int = 5):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # безопасный запрос для FTS
-    safe_query = re.sub(r"[^\w\s]", " ", query)
+    # делаем запрос безопаснее для FTS (убираем спецсимволы)
+    safe_query = re.sub(r"[^\w\s]", " ", query).strip()
+    if not safe_query:
+        conn.close()
+        return []
 
     sql = f"""
     SELECT v.*
@@ -56,14 +60,14 @@ def search_vacancies(query: str, limit: int = 5):
     JOIN vacancies v ON v.id = f.rowid
     WHERE vacancies_fts MATCH "{safe_query}"
       AND v.is_active = 1
-    LIMIT {limit}
+    LIMIT {int(limit)}
     """
 
     cur.execute(sql)
     rows = cur.fetchall()
     conn.close()
-
     return rows
+
 
 def build_context(vacancies):
     if not vacancies:
@@ -83,8 +87,9 @@ def build_context(vacancies):
 
     return "\n\n---\n\n".join(blocks)
 
+
 # ======================
-# API ENDPOINT
+# API ENDPOINT (/ask)
 # ======================
 
 @app.post("/ask")
@@ -93,7 +98,6 @@ def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    # 1. RETRIEVAL
     vacancies = search_vacancies(req.text, limit=5)
     context = build_context(vacancies)
 
@@ -108,17 +112,16 @@ def ask(req: AskRequest):
 
 ВОПРОС ПОЛЬЗОВАТЕЛЯ:
 {req.text}
-"""
+""".strip()
 
     try:
         client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
+        resp = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
         )
 
-        text = getattr(response, "text", None)
+        text = getattr(resp, "text", None)
         if not text:
             return {"error": "Empty response from model"}
 
@@ -129,11 +132,11 @@ def ask(req: AskRequest):
 
 
 # ======================
-# TELEGRAM BOT
+# TELEGRAM BOT (polling in separate thread)
 # ======================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
+    user_text = update.message.text or ""
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -144,13 +147,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         data = resp.json()
-        answer = data.get("answer", "Ошибка 😢")
+        answer = data.get("answer") or data.get("error") or "Ошибка 😢"
     except Exception:
         answer = "Ошибка сервера 😢"
 
     await update.message.reply_text(answer)
 
-async def start_bot():
+
+def run_telegram_polling():
     if not TELEGRAM_TOKEN:
         print("TELEGRAM_BOT_TOKEN not set")
         return
@@ -158,11 +162,12 @@ async def start_bot():
     tg_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    await tg_app.initialize()
-    await tg_app.start()
-    await tg_app.bot.initialize()
-    await tg_app.run_polling()
+    # ВАЖНО: run_polling() сам управляет event loop -> запускаем в отдельном потоке
+    tg_app.run_polling(close_loop=False)
+
 
 @app.on_event("startup")
-async def on_startup():
-    asyncio.create_task(start_bot())
+def on_startup():
+    # запускаем бота один раз, в фоне
+    t = threading.Thread(target=run_telegram_polling, daemon=True)
+    t.start()
