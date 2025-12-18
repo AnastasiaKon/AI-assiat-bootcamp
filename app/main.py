@@ -4,33 +4,21 @@ import os
 import sqlite3
 from pathlib import Path
 import re
+import requests
 
 from google import genai  # google-genai SDK
 
-import requests
+# ======================
+# APP INIT
+# ======================
 
-@app.get("/debug/models")
-def debug_models():
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return {"error": "GEMINI_API_KEY not set"}
-
-    url = "https://generativelanguage.googleapis.com/v1beta/models"
-    resp = requests.get(url, params={"key": api_key})
-
-    return {
-        "status_code": resp.status_code,
-        "response": resp.json()
-    }
-
+app = FastAPI()
 
 # ======================
 # CONFIG
 # ======================
 
 DB_PATH = Path(__file__).parent / "data" / "vacancies.db"
-
-app = FastAPI()
 
 
 class AskRequest(BaseModel):
@@ -54,6 +42,21 @@ def debug_sample():
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+@app.get("/debug/models")
+def debug_models():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return {"error": "GEMINI_API_KEY not set"}
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models"
+    resp = requests.get(url, params={"key": api_key})
+
+    return {
+        "status_code": resp.status_code,
+        "response": resp.json()
+    }
 
 
 # ======================
@@ -147,11 +150,10 @@ def ask(req: AskRequest):
     except Exception as e:
         msg = str(e)
 
-        # graceful fallback при проблемах с моделью
-        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "404" in msg:
             return {
                 "answer": (
-                    "Сейчас модель временно недоступна, "
+                    "Генерация сейчас недоступна, "
                     "но вот подходящие вакансии из базы:\n\n"
                     f"{context}"
                 )
