@@ -190,9 +190,9 @@ def ask(req: AskRequest):
     # 🔑 КЛЮЧЕВАЯ ПРАВКА:
     # для аналитики используем якорную роль
     if is_analysis_request(req.text):
-        vacancies = search_vacancies("аналитик", limit=50)
+        vacancies = search_vacancies("аналитик", limit=500)
     else:
-        vacancies = search_vacancies(req.text, limit=50)
+        vacancies = search_vacancies(req.text, limit=500)
 
     # -------- ANALYSIS MODE --------
     if is_analysis_request(req.text):
