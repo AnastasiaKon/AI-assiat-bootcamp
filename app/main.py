@@ -117,7 +117,7 @@ def ask(req: AskRequest):
         client = genai.Client(api_key=api_key)
 
         resp = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="models/text-bison-001",
             contents=prompt,
         )
 
