@@ -4,28 +4,14 @@ import os
 import sqlite3
 from pathlib import Path
 import re
-import threading
-import httpx
 
 from google import genai  # google-genai SDK
-
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
 
 # ======================
 # CONFIG
 # ======================
 
 DB_PATH = Path(__file__).parent / "data" / "vacancies.db"
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-# ВАЖНО: бот дергает твой же бэкенд
-BACKEND_URL = "https://ai-assiat-bootcamp.onrender.com/ask"
 
 app = FastAPI()
 
@@ -48,7 +34,6 @@ def search_vacancies(query: str, limit: int = 5):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # делаем запрос безопаснее для FTS (убираем спецсимволы)
     safe_query = re.sub(r"[^\w\s]", " ", query).strip()
     if not safe_query:
         conn.close()
@@ -129,38 +114,3 @@ def ask(req: AskRequest):
 
     except Exception as e:
         return {"error": str(e)}
-
-
-# ======================
-# TELEGRAM BOT (polling in separate thread)
-# ======================
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text or ""
-
-    try:
-        result = ask(AskRequest(text=user_text))
-        answer = result.get("answer") or result.get("error") or "Ошибка 😢"
-    except Exception as e:
-        answer = f"Ошибка сервера 😢"
-
-    await update.message.reply_text(answer)
-
-
-
-def run_telegram_polling():
-    if not TELEGRAM_TOKEN:
-        print("TELEGRAM_BOT_TOKEN not set")
-        return
-
-    tg_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # ВАЖНО: run_polling() сам управляет event loop -> запускаем в отдельном потоке
-    tg_app.run_polling(close_loop=False)
-
-
-@app.on_event("startup")
-def on_startup():
-    # запускаем бота один раз, в фоне
-    t = threading.Thread(target=run_telegram_polling, daemon=True)
-    t.start()
