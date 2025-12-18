@@ -134,24 +134,17 @@ def ask(req: AskRequest):
 # ======================
 # TELEGRAM BOT (polling in separate thread)
 # ======================
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text or ""
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            BACKEND_URL,
-            json={"text": user_text},
-            timeout=60
-        )
-
     try:
-        data = resp.json()
-        answer = data.get("answer") or data.get("error") or "Ошибка 😢"
-    except Exception:
-        answer = "Ошибка сервера 😢"
+        result = ask(AskRequest(text=user_text))
+        answer = result.get("answer") or result.get("error") or "Ошибка 😢"
+    except Exception as e:
+        answer = f"Ошибка сервера 😢"
 
     await update.message.reply_text(answer)
+
 
 
 def run_telegram_polling():
