@@ -19,8 +19,8 @@ async def ask(req: AskRequest):
         return {"error": "GEMINI_API_KEY not set"}
 
     url = (
-        "https://generativelanguage.googleapis.com/v1/models/"
-        "gemini-1.5-flash:generateContent"
+    "https://generativelanguage.googleapis.com/v1/models/"
+    "gemini-1.5-pro-latest:generateContent"
     )
 
     headers = {"Content-Type": "application/json"}
