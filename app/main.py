@@ -7,6 +7,23 @@ import re
 
 from google import genai  # google-genai SDK
 
+import requests
+
+@app.get("/debug/models")
+def debug_models():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return {"error": "GEMINI_API_KEY not set"}
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models"
+    resp = requests.get(url, params={"key": api_key})
+
+    return {
+        "status_code": resp.status_code,
+        "response": resp.json()
+    }
+
+
 # ======================
 # CONFIG
 # ======================
