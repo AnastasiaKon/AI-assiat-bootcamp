@@ -6,10 +6,8 @@ from pathlib import Path
 import re
 import uuid
 
-from google import genai  # google-genai SDK
-
+from google import genai
 import matplotlib.pyplot as plt
-
 
 # ======================
 # CONFIG
@@ -156,6 +154,29 @@ def plot_city_distribution(by_city):
 
 
 # ======================
+# CONTEXT BUILDER
+# ======================
+
+def build_context(vacancies):
+    if not vacancies:
+        return "Подходящих вакансий не найдено."
+
+    blocks = []
+    for v in vacancies:
+        block = f"""
+Вакансия: {v['position']}
+Компания: {v['company']}
+Город: {v['city']}
+Стек: {v['stack']}
+Описание: {v['description']}
+Зарплата: {v['salary']}
+"""
+        blocks.append(block.strip())
+
+    return "\n\n---\n\n".join(blocks)
+
+
+# ======================
 # API ENDPOINT (/ask)
 # ======================
 
@@ -165,7 +186,6 @@ def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    # для аналитики берём больше данных
     vacancies = search_vacancies(req.text, limit=50)
 
     # -------- ANALYSIS MODE --------
@@ -175,7 +195,7 @@ def ask(req: AskRequest):
         chart_path = plot_city_distribution(stats["by_city"])
 
         return {
-            "analysis": analysis_text,
+            "answer": analysis_text,
             "chart": chart_path
         }
 
@@ -221,26 +241,3 @@ def ask(req: AskRequest):
             }
 
         return {"error": msg}
-
-
-# ======================
-# CONTEXT BUILDER
-# ======================
-
-def build_context(vacancies):
-    if not vacancies:
-        return "Подходящих вакансий не найдено."
-
-    blocks = []
-    for v in vacancies:
-        block = f"""
-Вакансия: {v['position']}
-Компания: {v['company']}
-Город: {v['city']}
-Стек: {v['stack']}
-Описание: {v['description']}
-Зарплата: {v['salary']}
-"""
-        blocks.append(block.strip())
-
-    return "\n\n---\n\n".join(blocks)
