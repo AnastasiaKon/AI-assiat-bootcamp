@@ -20,9 +20,14 @@ def ask(req: AskRequest):
 
     genai.configure(api_key=api_key)
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(req.text)
+    try:
+        model = genai.GenerativeModel("models/gemini-pro")
+        response = model.generate_content(req.text)
 
-    return {
-        "answer": response.text
-    }
+        if not response or not response.text:
+            return {"error": "Empty response from Gemini"}
+
+        return {"answer": response.text}
+
+    except Exception as e:
+        return {"error": str(e)}
