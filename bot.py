@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-BACKEND_URL = os.getenv("BACKEND_URL")  # например https://ai-assiat-bootcamp.onrender.com/ask
+BACKEND_URL = os.getenv("BACKEND_URL")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
