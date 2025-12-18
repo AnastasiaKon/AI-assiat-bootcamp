@@ -22,20 +22,24 @@ def search_vacancies(query: str, limit: int = 5):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    sql = """
+    # простая очистка запроса для FTS
+    safe_query = query.replace('"', "").replace("'", "")
+
+    sql = f"""
     SELECT v.*
     FROM vacancies_fts f
     JOIN vacancies v ON v.id = f.rowid
-    WHERE vacancies_fts MATCH ?
+    WHERE vacancies_fts MATCH "{safe_query}"
       AND v.is_active = 1
-    LIMIT ?
+    LIMIT {limit}
     """
 
-    cur.execute(sql, (query, limit))
+    cur.execute(sql)
     rows = cur.fetchall()
     conn.close()
 
     return rows
+
     
 def build_context(vacancies):
     if not vacancies:
