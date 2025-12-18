@@ -32,7 +32,8 @@ def extract_search_term(text: str) -> str:
         "в", "на", "по", "для", "и", "или",
         "вакансии", "вакансия",
         "москва", "москве",
-        "проанализируй", "анализ", "статистика"
+        "проанализируй", "анализ", "статистика",
+        "распределение", "городам", "города"
     }
     keywords = [w for w in words if w not in stop_words]
     return " ".join(keywords[:2])
@@ -186,7 +187,12 @@ def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    vacancies = search_vacancies(req.text, limit=50)
+    # 🔑 КЛЮЧЕВАЯ ПРАВКА:
+    # для аналитики используем якорную роль
+    if is_analysis_request(req.text):
+        vacancies = search_vacancies("аналитик", limit=50)
+    else:
+        vacancies = search_vacancies(req.text, limit=50)
 
     # -------- ANALYSIS MODE --------
     if is_analysis_request(req.text):
