@@ -24,6 +24,14 @@ class AskRequest(BaseModel):
 def health():
     return {"status": "ok"}
 
+@app.get("/debug/sample")
+def debug_sample():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute("SELECT position, description FROM vacancies LIMIT 3")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
 
 # ======================
 # RAG: SEARCH (SQLite FTS5)
