@@ -20,9 +20,14 @@ class AskRequest(BaseModel):
     text: str
 
 
+# ======================
+# HEALTH & DEBUG
+# ======================
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/debug/sample")
 def debug_sample():
@@ -32,6 +37,7 @@ def debug_sample():
     rows = cur.fetchall()
     conn.close()
     return rows
+
 
 # ======================
 # RAG: SEARCH (SQLite FTS5)
@@ -109,10 +115,11 @@ def ask(req: AskRequest):
 
     try:
         client = genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
-        model="gemini-1.5-flash",
-        contents=prompt,
-    )
+
+        resp = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+        )
 
         text = getattr(resp, "text", None)
         if not text:
@@ -121,4 +128,16 @@ def ask(req: AskRequest):
         return {"answer": text}
 
     except Exception as e:
-        return {"error": str(e)}
+        msg = str(e)
+
+        # graceful fallback при проблемах с моделью
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+            return {
+                "answer": (
+                    "Сейчас модель временно недоступна, "
+                    "но вот подходящие вакансии из базы:\n\n"
+                    f"{context}"
+                )
+            }
+
+        return {"error": msg}
