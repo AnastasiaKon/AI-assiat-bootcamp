@@ -97,8 +97,6 @@ def ask(req: AskRequest):
     vacancies = search_vacancies(req.text, limit=5)
     context = build_context(vacancies)
 
-    genai.configure(api_key=api_key)
-
     prompt = f"""
 Ты — ассистент по поиску вакансий.
 
@@ -113,16 +111,22 @@ def ask(req: AskRequest):
 """
 
     try:
-        model = genai.GenerativeModel("models/gemini-pro")
-        response = model.generate_content(prompt)
+        client = genai.Client(api_key=api_key)
 
-        if not response or not response.text:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
+
+        text = getattr(response, "text", None)
+        if not text:
             return {"error": "Empty response from model"}
 
-        return {"answer": response.text}
+        return {"answer": text}
 
     except Exception as e:
         return {"error": str(e)}
+
 
 # ======================
 # TELEGRAM BOT
