@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import os
-import google.generativeai as genai
+from google import genai
 
 app = FastAPI()
 
@@ -13,21 +13,26 @@ def health():
     return {"status": "ok"}
 
 @app.post("/ask")
-def ask(req: AskRequest):
+async def ask(req: AskRequest):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    genai.configure(api_key=api_key)
-
     try:
-        model = genai.GenerativeModel("models/gemini-pro")
-        response = model.generate_content(req.text)
+        client = genai.Client(api_key=api_key)
 
-        if not response or not response.text:
-            return {"error": "Empty response from Gemini"}
+        # актуальный стиль вызова из документации
+        resp = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=req.text,
+        )
 
-        return {"answer": response.text}
+        # на всякий случай: если ответ пустой/нестандартный
+        text = getattr(resp, "text", None)
+        if not text:
+            return {"error": "Empty response", "raw": str(resp)}
+
+        return {"answer": text}
 
     except Exception as e:
         return {"error": str(e)}
