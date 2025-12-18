@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import os
-import httpx
+import google.generativeai as genai
 
 app = FastAPI()
 
@@ -13,43 +13,16 @@ def health():
     return {"status": "ok"}
 
 @app.post("/ask")
-async def ask(req: AskRequest):
+def ask(req: AskRequest):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    url = (
-    "https://generativelanguage.googleapis.com/v1/models/"
-    "gemini-1.5-pro-latest:generateContent"
-    )
+    genai.configure(api_key=api_key)
 
-    headers = {"Content-Type": "application/json"}
-    params = {"key": api_key}
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(req.text)
 
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": req.text}
-                ]
-            }
-        ]
+    return {
+        "answer": response.text
     }
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            url,
-            headers=headers,
-            params=params,
-            json=payload,
-            timeout=30
-        )
-
-    data = resp.json()
-
-    try:
-        answer = data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        return {"error": data}
-
-    return {"answer": answer}
