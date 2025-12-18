@@ -1,12 +1,33 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import os
-from google import genai
 import sqlite3
 from pathlib import Path
+import re
+import asyncio
+import httpx
+
+from google import genai
+
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+# ======================
+# CONFIG
+# ======================
 
 DB_PATH = Path(__file__).parent / "data" / "vacancies.db"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BACKEND_URL = "https://ai-assiat-bootcamp.onrender.com/ask"
 
+# ======================
+# FASTAPI APP
+# ======================
 
 app = FastAPI()
 
@@ -17,13 +38,17 @@ class AskRequest(BaseModel):
 def health():
     return {"status": "ok"}
 
+# ======================
+# RAG: SEARCH
+# ======================
+
 def search_vacancies(query: str, limit: int = 5):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # простая очистка запроса для FTS
-    safe_query = query.replace('"', "").replace("'", "")
+    # безопасный запрос для FTS
+    safe_query = re.sub(r"[^\w\s]", " ", query)
 
     sql = f"""
     SELECT v.*
@@ -40,7 +65,6 @@ def search_vacancies(query: str, limit: int = 5):
 
     return rows
 
-    
 def build_context(vacancies):
     if not vacancies:
         return "Подходящих вакансий не найдено."
@@ -59,6 +83,9 @@ def build_context(vacancies):
 
     return "\n\n---\n\n".join(blocks)
 
+# ======================
+# API ENDPOINT
+# ======================
 
 @app.post("/ask")
 def ask(req: AskRequest):
@@ -66,7 +93,7 @@ def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    # 1. Retrieval
+    # 1. RETRIEVAL
     vacancies = search_vacancies(req.text, limit=5)
     context = build_context(vacancies)
 
@@ -97,14 +124,9 @@ def ask(req: AskRequest):
     except Exception as e:
         return {"error": str(e)}
 
-import asyncio
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
-import httpx
-
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-BACKEND_URL = "https://ai-assiat-bootcamp.onrender.com/ask"
-
+# ======================
+# TELEGRAM BOT
+# ======================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
@@ -116,27 +138,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=60
         )
 
-    data = resp.json()
-    answer = data.get("answer", "Ошибка 😢")
+    try:
+        data = resp.json()
+        answer = data.get("answer", "Ошибка 😢")
+    except Exception:
+        answer = "Ошибка сервера 😢"
 
     await update.message.reply_text(answer)
-
 
 async def start_bot():
     if not TELEGRAM_TOKEN:
         print("TELEGRAM_BOT_TOKEN not set")
         return
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    tg_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    await app.initialize()
-    await app.start()
-    await app.bot.initialize()
-    await app.updater.start_polling()
-
+    await tg_app.initialize()
+    await tg_app.start()
+    await tg_app.bot.initialize()
+    await tg_app.run_polling()
 
 @app.on_event("startup")
 async def on_startup():
     asyncio.create_task(start_bot())
-
