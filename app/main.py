@@ -109,10 +109,10 @@ def ask(req: AskRequest):
 
     try:
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
+    resp = client.models.generate_content(
+        model="gemini-1.5-flash",
+        contents=prompt,
+    )
 
         text = getattr(resp, "text", None)
         if not text:
