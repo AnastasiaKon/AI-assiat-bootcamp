@@ -19,6 +19,16 @@ app = FastAPI()
 class AskRequest(BaseModel):
     text: str
 
+def extract_search_term(text: str) -> str:
+    words = re.findall(r"\w+", text.lower())
+    stop_words = {
+        "в", "на", "по", "для", "и", "или",
+        "вакансии", "вакансия",
+        "москва", "москве"
+    }
+    keywords = [w for w in words if w not in stop_words]
+    return " ".join(keywords[:2])
+
 
 # ======================
 # HEALTH & DEBUG
