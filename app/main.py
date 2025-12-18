@@ -2,6 +2,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import os
 from google import genai
+import sqlite3
+from pathlib import Path
+
+DB_PATH = Path(__file__).parent / "data" / "vacancies.db"
+
 
 app = FastAPI()
 
@@ -12,27 +17,78 @@ class AskRequest(BaseModel):
 def health():
     return {"status": "ok"}
 
+def search_vacancies(query: str, limit: int = 5):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    sql = """
+    SELECT v.*
+    FROM vacancies_fts f
+    JOIN vacancies v ON v.id = f.rowid
+    WHERE vacancies_fts MATCH ?
+      AND v.is_active = 1
+    LIMIT ?
+    """
+
+    cur.execute(sql, (query, limit))
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
+    
+def build_context(vacancies):
+    if not vacancies:
+        return "Подходящих вакансий не найдено."
+
+    blocks = []
+    for v in vacancies:
+        block = f"""
+Вакансия: {v['position']}
+Компания: {v['company']}
+Город: {v['city']}
+Стек: {v['stack']}
+Описание: {v['description']}
+Зарплата: {v['salary']}
+"""
+        blocks.append(block.strip())
+
+    return "\n\n---\n\n".join(blocks)
+
+
 @app.post("/ask")
-async def ask(req: AskRequest):
+def ask(req: AskRequest):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
+    # 1. Retrieval
+    vacancies = search_vacancies(req.text, limit=5)
+    context = build_context(vacancies)
+
+    genai.configure(api_key=api_key)
+
+    prompt = f"""
+Ты — ассистент по поиску вакансий.
+
+Используй ТОЛЬКО информацию ниже.
+Если ответа нет в данных — честно скажи, что не знаешь.
+
+ДАННЫЕ:
+{context}
+
+ВОПРОС ПОЛЬЗОВАТЕЛЯ:
+{req.text}
+"""
+
     try:
-        client = genai.Client(api_key=api_key)
+        model = genai.GenerativeModel("models/gemini-pro")
+        response = model.generate_content(prompt)
 
-        # актуальный стиль вызова из документации
-        resp = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=req.text,
-        )
+        if not response or not response.text:
+            return {"error": "Empty response from model"}
 
-        # на всякий случай: если ответ пустой/нестандартный
-        text = getattr(resp, "text", None)
-        if not text:
-            return {"error": "Empty response", "raw": str(resp)}
-
-        return {"answer": text}
+        return {"answer": response.text}
 
     except Exception as e:
         return {"error": str(e)}
