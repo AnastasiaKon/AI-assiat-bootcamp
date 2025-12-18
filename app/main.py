@@ -14,22 +14,6 @@ def health():
 
 @app.post("/ask")
 async def ask(req: AskRequest):
-from fastapi import FastAPI
-from pydantic import BaseModel
-import os
-import httpx
-
-app = FastAPI()
-
-class AskRequest(BaseModel):
-    text: str
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.post("/ask")
-async def ask(req: AskRequest):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
@@ -69,4 +53,3 @@ async def ask(req: AskRequest):
         return {"error": data}
 
     return {"answer": answer}
-
