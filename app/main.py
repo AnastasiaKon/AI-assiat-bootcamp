@@ -26,23 +26,46 @@ class AskRequest(BaseModel):
 # SEARCH HELPERS
 # ======================
 
+STOP_WORDS = {
+    "в", "на", "по", "для", "и", "или",
+    "вакансии", "вакансия",
+    "москва", "москве",
+    "проанализируй", "анализ", "статистика",
+    "распределение", "городам", "города",
+    "где", "какие", "сколько", "покажи"
+}
+
+
 def extract_search_term(text: str) -> str:
     words = re.findall(r"\w+", text.lower())
-    stop_words = {
-        "в", "на", "по", "для", "и", "или",
-        "вакансии", "вакансия",
-        "москва", "москве",
-        "проанализируй", "анализ", "статистика",
-        "распределение", "городам", "города"
-    }
-    keywords = [w for w in words if w not in stop_words]
+    keywords = [w for w in words if w not in STOP_WORDS]
     return " ".join(keywords[:2])
 
 
 def is_analysis_request(text: str) -> bool:
-    keywords = ["анализ", "проанализируй", "статистика", "сколько", "распределение"]
     text = text.lower()
-    return any(k in text for k in keywords)
+    analysis_markers = [
+        "анализ",
+        "проанализируй",
+        "статистика",
+        "распределение",
+        "где больше",
+        "какие города",
+        "сколько вакансий",
+        "рынок"
+    ]
+    return any(m in text for m in analysis_markers)
+
+
+def extract_analysis_role(text: str) -> str:
+    """
+    Определяем, кого анализируем.
+    Пока поддерживаем только аналитиков — MVP.
+    """
+    text = text.lower()
+    if "аналитик" in text:
+        return "аналитик"
+    return "аналитик"  # дефолт для MVP
 
 
 # ======================
@@ -68,13 +91,12 @@ def debug_sample():
 # SEARCH (SQLite FTS5)
 # ======================
 
-def search_vacancies(query: str, limit: int = 5):
+def search_vacancies(query: str, limit: int = 50):
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    search_query = extract_search_term(query)
-    if not search_query:
+    if not query:
         conn.close()
         return []
 
@@ -82,7 +104,7 @@ def search_vacancies(query: str, limit: int = 5):
     SELECT v.*
     FROM vacancies_fts f
     JOIN vacancies v ON v.id = f.rowid
-    WHERE vacancies_fts MATCH "{search_query}*"
+    WHERE vacancies_fts MATCH "{query}*"
     LIMIT {int(limit)}
     """
 
@@ -116,6 +138,9 @@ def analyze_vacancies(vacancies):
 
 
 def build_analysis_text(stats):
+    if stats["total"] == 0:
+        return "❗ По этому запросу вакансии не найдены, статистику построить невозможно."
+
     lines = []
     lines.append(f"📊 Всего найдено вакансий: {stats['total']}")
 
@@ -138,6 +163,9 @@ def build_analysis_text(stats):
 # ======================
 
 def plot_city_distribution(by_city):
+    if not by_city:
+        return None
+
     filename = f"/tmp/cities_{uuid.uuid4().hex}.png"
 
     cities = list(by_city.keys())
@@ -187,15 +215,11 @@ def ask(req: AskRequest):
     if not api_key:
         return {"error": "GEMINI_API_KEY not set"}
 
-    # 🔑 КЛЮЧЕВАЯ ПРАВКА:
-    # для аналитики используем якорную роль
-    if is_analysis_request(req.text):
-        vacancies = search_vacancies("аналитик", limit=500)
-    else:
-        vacancies = search_vacancies(req.text, limit=500)
-
     # -------- ANALYSIS MODE --------
     if is_analysis_request(req.text):
+        role = extract_analysis_role(req.text)
+        vacancies = search_vacancies(role, limit=500)
+
         stats = analyze_vacancies(vacancies)
         analysis_text = build_analysis_text(stats)
         chart_path = plot_city_distribution(stats["by_city"])
@@ -206,6 +230,8 @@ def ask(req: AskRequest):
         }
 
     # -------- NORMAL Q&A MODE --------
+    search_query = extract_search_term(req.text)
+    vacancies = search_vacancies(search_query, limit=50)
     context = build_context(vacancies)
 
     prompt = f"""
